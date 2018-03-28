@@ -56,3 +56,4 @@ resource/processed_features
 venv/
 music.pkl
 temp.py
+*.mp3
