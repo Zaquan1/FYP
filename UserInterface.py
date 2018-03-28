@@ -1,13 +1,15 @@
 import dash
 import base64
 import os
-import io
 from dash.dependencies import Input, Output
 import dash_core_components as dcc
 import dash_html_components as html
-import soundfile as sf
+from keras.models import load_model
+
 
 app = dash.Dash()
+
+model = load_model("resource/model/LSTM.h5")
 
 app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True
