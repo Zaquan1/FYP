@@ -3,6 +3,7 @@ import librosa
 import matplotlib.pyplot as plt
 import IPython.display
 import librosa.display
+from Feature import Feature
 import itertools
 import numpy as np
 import csv
@@ -25,7 +26,7 @@ def get_labels():
     return arousal, valence
 
 
-def duration_to_frame(y, idealLength):
+def duration_to_frame(y, idealLength=0):
     duration = librosa.get_duration(y=y, sr=sr, hop_length=hop_length)
     sec_inc = 0.5
     time_stamp = sec_inc
@@ -33,6 +34,8 @@ def duration_to_frame(y, idealLength):
     while time_stamp <= duration:
         time.append(time_stamp)
         time_stamp += sec_inc
+    if idealLength == 0:
+        idealLength = len(time) + 1
     while len(time) > idealLength-1:
         time = time[:-1]
     return librosa.time_to_frames(time, hop_length=hop_length, sr=sr)
@@ -64,42 +67,7 @@ def get_mfcc_feature(y):
     spectral_contrast = librosa.feature.spectral_contrast(y, sr=sr)
     # get spectral centroid
     spectral_centroid = librosa.feature.spectral_centroid(y, sr=sr)
-    '''
-    # plot for rolloff
-    plt.figure()
-    plt.subplot(4,1,1)
-    plt.semilogy(rolloff85.T)
-    plt.xticks([])
-    plt.xlim([0, rolloff85.shape[-1]])
-    plt.subplot(4, 1, 2)
-    plt.semilogy(rolloff95.T)
-    plt.subplot(4, 1, 3)
-    plt.semilogy((sync_frames(rolloff95, duration_to_frame(y))).T)
-    plt.subplot(4, 1, 4)
-    plt.semilogy((sync_frames(rolloff95, duration_to_frame(y), np.std)).T)
-    
-    #plot for mfcc
-    plt.figure(1, figsize=(12, 6))
-    plt.subplot(2, 1, 1)
-    librosa.display.specshow(mfcc)
-    plt.ylabel('MFCC')
-    plt.colorbar()
-    plt.subplot(2, 1, 2)
-    librosa.display.specshow(mfcc_delta)
-    plt.ylabel('MFCC-$\Delta$')
-    plt.colorbar()
-    
-    #plot for flux
-    plt.figure(2)
-    plt.subplot(4,1,1)
-    plt.plot(2 + spectral_flux, alpha=0.8, label='Mean (mel)')
-    plt.subplot(4, 1, 2)
-    plt.plot(2 + spectral_flux2, alpha=0.8, label='Mean (mel)')
-    plt.subplot(4,1,3)
-    plt.plot(2 + spectral_flux/spectral_flux.max(), alpha=0.8, label='Mean (mel)')
-    plt.subplot(4, 1, 4)
-    plt.plot(2 + spectral_flux2/spectral_flux2.max(), alpha=0.8, label='Mean (mel)')
-    '''
+
     return np.vstack([mfcc, mfcc_delta, mfcc_delta2, spectral_flux,
                       zc, rolloff95, rolloff85, spectral_contrast, spectral_centroid])
 
@@ -110,18 +78,7 @@ def get_chroma_feature(y):
     chromagram = librosa.feature.chroma_cqt(y=y_harmonic, sr=sr, hop_length=hop_length, bins_per_octave=12*3)
     # get tonal centroid
     tonnets = librosa.feature.tonnetz(y_harmonic, sr=sr)
-    '''''
-    plt.figure()
-    plt.subplot(2,1,1)
-    librosa.display.specshow(tonnets)
-    plt.colorbar()
-    plt.title('tonnetzz')
-    plt.subplot(2, 1, 2)
-    librosa.display.specshow(chromagram)
-    plt.colorbar()
-    plt.title('Chroma')
-    plt.tight_layout()
-    '''
+
     return np.vstack([chromagram, tonnets])
 
 
@@ -155,18 +112,7 @@ def get_rmse_feature(y):
 def get_rhythm_feature(y):
     onset = librosa.onset.onset_strength(y, sr=sr)
     dynamic_tempo = librosa.beat.tempo(onset_envelope=onset, sr=sr, aggregate=None)
-    '''
-    plt.figure()
-    plt.subplot(3,1,1)
-    plt.plot(dynamic_tempo, linewidth=1.5, label='tempo estimate')
-    plt.legend(frameon=True, framealpha=0.75)
-    plt.subplot(3,1,2)
-    plt.plot(sync_frames(dynamic_tempo, duration_to_frame(y)), linewidth=1.5, label='tempo estimate')
-    plt.legend(frameon=True, framealpha=0.75)
-    plt.subplot(3,1,3)
-    plt.plot(sync_frames(dynamic_tempo, duration_to_frame(y), np.std), linewidth=1.5, label='tempo estimate')
-    plt.legend(frameon=True, framealpha=0.75)
-    '''
+
     return dynamic_tempo
 
 
@@ -180,13 +126,6 @@ def get_feature_name(name, total_round=1):
             new_name.append(name + "_" + str(i))
             i += 1
     return new_name
-
-
-def remove_excess_labels(label, length):
-    while len(label) > length:
-        label = label[:-1]
-    return label
-
 
 # get directory for all the music
 musicDir = get_directory()
@@ -219,6 +158,42 @@ features_header.append(get_feature_name("arousal"))
 features_header.append(get_feature_name("valence"))
 features_header = list(itertools.chain.from_iterable(features_header))
 i = 1103
+for music in musicDir[:2]:
+    # extract all features
+    features = Feature(music)
+    print("extracting timbre...")
+    features.extract_timbre_features()
+    print("extracting melody...")
+    features.extract_melody_features()
+    print("extracting energy...")
+    features.extract_energy_features()
+    print("extracting rhythm...")
+    features.extract_rhythm_features()
+    all_features = features.get_all_features()
+
+    # get current feature labels
+    row_arousal_label = arousal.loc[arousal['song_id'] == int(features.filename)].index[0]
+    row_valence_label = valence.loc[valence['song_id'] == int(features.filename)].index[0]
+    curr_arousal_label = arousal.values[row_arousal_label, 1:]
+    curr_valence_label = valence.values[row_valence_label, 1:]
+    # remove nan from list
+    curr_arousal_label = curr_arousal_label[~np.isnan(curr_arousal_label)]
+    curr_valence_label = curr_valence_label[~np.isnan(curr_valence_label)]
+    # removing excess label/timestamps
+    min_music_length = min(len(curr_arousal_label), len(curr_valence_label))
+    all_features = all_features[:, :min_music_length]
+    curr_arousal_label = curr_arousal_label[:min_music_length]
+    curr_valence_label = curr_valence_label[:min_music_length]
+    # append label to the data
+    all_features = np.vstack([all_features, curr_arousal_label, curr_valence_label])
+    # save feature to csv
+    with open("resource/features/" + features.filename + ".csv", "w+", newline='') as my_csv:
+        csvWriter = csv.writer(my_csv, delimiter=',')
+        csvWriter.writerow(features_header)
+        # invert feature to be (timestamp x feature) format
+        csvWriter.writerows(np.transpose(all_features))
+
+'''
 for music in musicDir[1103:]:
     y, sr = librosa.load(path=music, sr=sr, offset=15)
     # get the music names
@@ -264,30 +239,6 @@ for music in musicDir[1103:]:
         csvWriter.writerows(np.transpose(all_feature))
     i += 1
     print(music_name, " done, total left: ", i, "/", len(musicDir))
-
-
-'''
-# plot for view
-plt.figure(2, figsize=(12, 9))
-plt.subplot(4, 1, 1)
-librosa.display.specshow(chroma_features, sr=sr, x_axis='time', y_axis='chroma', vmin=0, vmax=1)
-plt.title('Chromagram')
-plt.colorbar()
-
-plt.subplot(4, 1, 2)
-librosa.display.specshow(sync_frames(chroma_features, duration_to_frame(y)), sr=sr, x_axis='time', y_axis='chroma', vmin=0, vmax=1)
-plt.title('Chromagram by frames')
-plt.colorbar()
-
-plt.subplot(4, 1, 3)
-librosa.display.specshow(sync_frames(chroma_features, duration_to_frame(y), np.std), sr=sr, x_axis='time', y_axis='chroma', vmin=0, vmax=1)
-plt.title('Chromagram by frames')
-plt.colorbar()
-
-plt.subplot(4, 1, 4)
-librosa.display.specshow(sync_frames(chroma_features, duration_to_frame(y), np.median), sr=sr, x_axis='time', y_axis='chroma', vmin=0, vmax=1)
-plt.title('Chromagram by frames')
-plt.colorbar()
 '''
 
 plt.show()
