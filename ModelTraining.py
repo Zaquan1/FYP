@@ -1,6 +1,4 @@
-import csv
 from matplotlib import pyplot
-
 import os
 from pandas import read_csv
 from pandas import DataFrame
@@ -12,16 +10,6 @@ import time
 from math import sqrt
 from sklearn.metrics import mean_squared_error
 import numpy as np
-import itertools
-
-
-def get_feature_name(name, total_round=1):
-    i = 0
-    new_name = []
-    while i < total_round:
-        new_name.append(name + "_" + str(i))
-        i += 1
-    return new_name
 
 
 def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
@@ -70,7 +58,7 @@ def get_model():
     return model
 
 
-def get_raw_features():
+def get_extracted_features():
     i = 1
     features_data = []
     dirpath = os.path.dirname(os.path.realpath(__file__)) + "/resource/features"
@@ -92,17 +80,19 @@ timesteps = 3
 # n_features including 2 of the labels, arousal and valance
 n_features = 148
 start = time.time()
-features_data = get_raw_features()
+features_data = get_extracted_features()
 end = time.time()
 print("time: ", end-start)
 train = features_data[:1000, :]
 val = features_data[1000:1500, :]
 test = features_data[1500:, :]
+
 train_X, train_y = split_features_and_y(train, timesteps, n_features)
 val_X, val_y = split_features_and_y(val, timesteps, n_features)
 test_X, test_y = split_features_and_y(val, timesteps, n_features)
 print("train: ", train_X.shape, train_y.shape)
 print("val: ", val_X.shape, val_y.shape)
+
 train_X = train_X.reshape(train_X.shape[0], timesteps, n_features-2)
 val_X = val_X.reshape(val_X.shape[0], timesteps, n_features-2)
 test_X = test_X.reshape(test_X.shape[0], timesteps, n_features-2)
