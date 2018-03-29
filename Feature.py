@@ -26,6 +26,7 @@ class Feature:
         self.rhythm_features = []
 
     def extract_timbre_features(self):
+        print("extract timbre...")
         y_harmonic = librosa.effects.harmonic(self.y, margin=4)
         # get mfcc
         mfcc = librosa.feature.mfcc(y=y_harmonic, sr=self.sr, hop_length=self.hop_length, n_mfcc=13)
@@ -88,6 +89,7 @@ class Feature:
         return self.timbre_features
 
     def extract_melody_features(self):
+        print("extract melody...")
         y_harmonic = librosa.effects.harmonic(self.y, margin=4)
         chromagram = librosa.feature.chroma_cqt(y=y_harmonic, sr=self.sr, hop_length=self.hop_length, bins_per_octave=12 * 3)
         # get tonal centroid
@@ -98,6 +100,7 @@ class Feature:
         return self.timbre_features
 
     def extract_energy_features(self):
+        print("extract energy...")
         y_stft = librosa.stft(y=self.y, hop_length=self.hop_length)
         S, phase = librosa.magphase(y_stft)
         rms = librosa.feature.rmse(S=S).flatten()
@@ -126,6 +129,7 @@ class Feature:
         return self.energy_features
 
     def extract_rhythm_features(self):
+        print("extract rhythm...")
         onset = librosa.onset.onset_strength(self.y, sr=self.sr)
         dynamic_tempo = librosa.beat.tempo(onset_envelope=onset, sr=self.sr, aggregate=None)
         self.rhythm_features = dynamic_tempo

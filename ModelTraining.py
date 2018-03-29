@@ -4,7 +4,7 @@ from pandas import read_csv
 from pandas import DataFrame
 from pandas import concat
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation
+from keras.layers import Dense, Dropout
 from keras.layers import LSTM
 import time
 from math import sqrt
@@ -35,7 +35,7 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
 
 def split_features_and_y(data, time_stamp, features_number):
     split_data = []
-    for i in range(time_stamp):
+    for i in range(time_stamp+1):
         if i == 0:
             split_data = data[:, :((i + 1)*features_number)-2]
         else:
@@ -46,7 +46,7 @@ def split_features_and_y(data, time_stamp, features_number):
 
 def get_model():
     model = Sequential()
-    model.add(LSTM(512, input_shape=(3, 146),
+    model.add(LSTM(512, input_shape=(4, 146),
                    return_sequences=True))
     model.add(Dropout(0.1))
     model.add(LSTM(256))
@@ -83,24 +83,26 @@ start = time.time()
 features_data = get_extracted_features()
 end = time.time()
 print("time: ", end-start)
-train = features_data[:1000, :]
-val = features_data[1000:1500, :]
-test = features_data[1500:, :]
+train = features_data[:int(len(features_data)/2), :]
+val = features_data[int(len(features_data)/2):int(len(features_data)/1.2), :]
+test = features_data[int(len(features_data)/1.2):, :]
 
 train_X, train_y = split_features_and_y(train, timesteps, n_features)
 val_X, val_y = split_features_and_y(val, timesteps, n_features)
-test_X, test_y = split_features_and_y(val, timesteps, n_features)
+test_X, test_y = split_features_and_y(test, timesteps, n_features)
 print("train: ", train_X.shape, train_y.shape)
 print("val: ", val_X.shape, val_y.shape)
+print("test: ", test_X.shape, test_y.shape)
 
-train_X = train_X.reshape(train_X.shape[0], timesteps, n_features-2)
-val_X = val_X.reshape(val_X.shape[0], timesteps, n_features-2)
-test_X = test_X.reshape(test_X.shape[0], timesteps, n_features-2)
+train_X = train_X.reshape(train_X.shape[0], timesteps+1, n_features-2)
+val_X = val_X.reshape(val_X.shape[0], timesteps+1, n_features-2)
+test_X = test_X.reshape(test_X.shape[0], timesteps+1, n_features-2)
 print("trainRe: ", train_X.shape)
 print("valRe: ", val_X.shape)
+print("test_x:", test_X.shape)
 
 model = get_model()
-history = model.fit(train_X, train_y, epochs=40, batch_size=57, validation_data=(val_X, val_y), verbose=2, shuffle=False)
+history = model.fit(train_X, train_y, epochs=500, batch_size=50, validation_data=(val_X, val_y), verbose=2, shuffle=False)
 print("saving model..")
 model.save(os.path.dirname(os.path.realpath(__file__)) + "/resource/model/LSTM.h5")
 pyplot.plot(history.history['loss'], label='train')
