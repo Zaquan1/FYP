@@ -97,7 +97,7 @@ class Feature:
 
         self.melody_features = np.vstack([chromagram, tonnets])
 
-        return self.timbre_features
+        return self.melody_features
 
     def extract_energy_features(self):
         print("extract energy...")
