@@ -64,7 +64,7 @@ i = 0
 for music in musicDir:
     start = time.time()
     # extract all features
-    features = Feature(music)
+    features = Feature(music, 15)
     print("Extracting music feature: ", features.filename, "...")
     print("extracting timbre...")
     features.extract_timbre_features()

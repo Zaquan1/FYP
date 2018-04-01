@@ -11,7 +11,7 @@ import time
 from math import sqrt
 from sklearn.metrics import mean_squared_error
 import numpy as np
-from Feature import Feature
+import miscellaneous as misc
 
 
 # split the data into features and label
@@ -36,7 +36,7 @@ def get_model():
     model.add(Dropout(0.1))
     model.add(Dense(256))
     model.add(Dropout(0.1))
-    model.add(Dense(2, activation='tanh'))
+    model.add(Dense(1, activation='tanh'))
     model.compile(loss='mean_squared_error', metrics=['mse'], optimizer='adam')
     return model
 
@@ -47,10 +47,10 @@ def get_extracted_features():
     features_data = []
     dirpath = os.path.dirname(os.path.realpath(__file__)) + "/resource/features"
     print("getting feature....")
-    for filename in os.listdir(dirpath)[:50]:
+    for filename in os.listdir(dirpath):
         dataset = read_csv("resource/features/" + filename, header=0)
         values = dataset.values
-        data = Feature.series_to_supervised(values, timesteps, 1)
+        data = misc.series_to_supervised(values, timesteps, 1)
         if i == 1:
             features_data = data
         else:
@@ -77,22 +77,38 @@ test_X, test_y = split_features_and_y(test, timesteps, n_features)
 train_X = train_X.reshape(train_X.shape[0], timesteps+1, n_features-2)
 val_X = val_X.reshape(val_X.shape[0], timesteps+1, n_features-2)
 test_X = test_X.reshape(test_X.shape[0], timesteps+1, n_features-2)
-# create the model
-model = get_model()
-# train the model
-history = model.fit(train_X, train_y, epochs=500, batch_size=50, validation_data=(val_X, val_y), verbose=2, shuffle=False)
+
+# create the model for arousal
+model_arousal = get_model()
+print(train_y.shape)
+# train the model for arousal
+historyArousal = model_arousal.fit(train_X, train_y[:, 0], epochs=200, batch_size=100, validation_data=(val_X, val_y[:, 0]), verbose=2, shuffle=False)
 print("saving model..")
 # save the model
-model.save(os.path.dirname(os.path.realpath(__file__)) + "/resource/model/LSTM.h5")
+model_arousal.save(os.path.dirname(os.path.realpath(__file__)) + "/resource/model/LSTMArousal.h5")
 # display the training progress
-pyplot.plot(history.history['loss'], label='train')
-pyplot.plot(history.history['val_loss'], label='test')
+pyplot.plot(historyArousal.history['loss'], label='train_arousal')
+pyplot.plot(historyArousal.history['val_loss'], label='test_arousal')
 pyplot.legend()
+
+# create the model for valance
+model_valance = get_model()
+# train model for valance
+historyValance = model_valance.fit(train_X, train_y[:, 1], epochs=200, batch_size=100, validation_data=(val_X, val_y[:, 1]), verbose=2, shuffle=False)
+print("saving model..")
+# save the model
+model_valance.save(os.path.dirname(os.path.realpath(__file__)) + "/resource/model/LSTMValance.h5")
+# display the training progress
+pyplot.plot(historyValance.history['loss'], label='train_valance')
+pyplot.plot(historyValance.history['val_loss'], label='test_valance')
+pyplot.legend()
+
 # make the prediction for calculating RMSE
-print("start predicting...")
-prediction = model.predict(test_X)
+prediction_arousal = model_arousal.predict(test_X)
+prediction_valance = model_valance.predict(test_X)
 print("calculating RMSE...")
-rmse = sqrt(mean_squared_error(prediction, test_y))
-print("RMSE: ", rmse)
+rmse_arousal = sqrt(mean_squared_error(prediction_arousal, test_y[:, 0]))
+rmse_valance = sqrt(mean_squared_error(prediction_valance, test_y[:, 1]))
+print("RMSE arousal: ", rmse_arousal, "RMSE valance: ", rmse_valance)
 
 pyplot.show()

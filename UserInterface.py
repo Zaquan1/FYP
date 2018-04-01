@@ -11,6 +11,7 @@ from keras.models import load_model
 import base64
 import os
 import numpy as np
+import miscellaneous as misc
 
 app = dash.Dash()
 stop = True
@@ -84,7 +85,7 @@ def generate_interval_id(value):
     [Input('upload-audio', 'contents'),
      Input('upload-audio', 'filename')])
 def display_controls(contents, filename):
-    # generate 2 dynamic controls based off of the datasource selections
+    print("hi there")
     if contents is not None:
         get_audio_contents(contents, filename)
         return html.Div([
@@ -94,8 +95,9 @@ def display_controls(contents, filename):
             html.Div([
                 DYNAMIC_GRAPH['Features']
             ], style={'width': '50%', 'display': 'inline-block'}),
+            html.Audio(src=contents, id='music-audio', autoPlay='audio'),
             dcc.Interval(
-                id=generate_interval_id('test'),
+                id=generate_interval_id('interval'),
                 interval=1*500,
                 n_intervals=0
             ),
@@ -119,36 +121,28 @@ def get_audio_contents(c, filename):
         music_feature = Feature(music['filepath'])
         # get all extracted feature
         music['energy_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_energy_features())).mean(
-            axis=0)[:-3]
+            axis=0)
         music['timbre_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_timbre_features())).mean(
-            axis=0)[:-3]
+            axis=0)
         music['melody_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_melody_features())).mean(
-            axis=0)[:-3]
+            axis=0)
         music['rhythm_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_rhythm_features()))[:-3]
         # data preparation for prediction
-        data = Feature.series_to_supervised(np.transpose(music_feature.get_all_features()), 3, 1)
+        data = misc.series_to_supervised(np.transpose(music_feature.get_all_features()), 3, 1)
         data = data.values.reshape(data.values.shape[0], 4, 146)
         predict = model.predict(data)
         # save prediction into dictionary
         music['arousal_predict'] = predict[:, 0]
         music['valance_predict'] = predict[:, 1]
-        music['duration'] = [i for i in frange(0.5, len(predict) * 0.5, 0.5)]
+        music['duration'] = [i for i in misc.frange(0.5, len(music['timbre_feature']) * 0.5, 0.5)]
         '''['%d:%2.1f' % (int((i + 1.5) / 60), (i + 1.5) % 60) for i in
                              frange(0.5, len(predict) * 0.5, 0.5)]'''
-
-
-def frange(start, stop, step):
-    i = start
-    while i < stop:
-        yield i
-        i += step
 
 
 def generate_output_callback(key):
     def output_callback(n_interval):
         # This function can display different outputs depending on
         # the values of the dynamic controls
-        print('wrapper called')
         if key == 'Features':
             trace_rhythm = go.Scatter(
                 x=music['duration'][:n_interval],
@@ -175,17 +169,29 @@ def generate_output_callback(key):
             fig['layout']['xaxis4'].update(title='Duration')
         else:
             trace = go.Scatter(
-                x=music['valance_predict'][n_interval-3:n_interval],
-                y=music['arousal_predict'][n_interval-3:n_interval],
+                x=music['valance_predict'][misc.negative_to_zero(n_interval-4):misc.negative_to_zero(n_interval-3)],
+                y=music['arousal_predict'][misc.negative_to_zero(n_interval-4):misc.negative_to_zero(n_interval-3)],
+                mode='markers+text',
+                text=music['duration'][n_interval-1:n_interval],
+                textposition='bottom'
             )
             fig = tools.make_subplots(1, 1)
             fig.append_trace(trace, 1, 1)
             fig['layout'].update(title='Arousal Valance Graph')
-            fig['layout']['xaxis1'].update(title='Valance')
-            fig['layout']['yaxis1'].update(title='Arousal')
+            fig['layout']['xaxis1'].update(title='Valance', range=[-1, 1])
+            fig['layout']['yaxis1'].update(title='Arousal', range=[-1, 1])
 
         return fig
     return output_callback
+
+
+def generate_interval_callback():
+    def interval_callback(n_interval):
+        if n_interval >= len(music['duration']):
+            return 60*60*1000
+        else:
+            return 1*500
+    return interval_callback
 
 app.config.supress_callback_exceptions = True
 
@@ -193,9 +199,13 @@ for key in DYNAMIC_GRAPH:
     print('all callback created: ', key)
     app.callback(
         Output(generate_graph_id(key), 'figure'),
-        [Input(generate_interval_id('test'), 'n_intervals')])(
+        [Input(generate_interval_id('interval'), 'n_intervals')])(
         generate_output_callback(key)
     )
+app.callback(
+    Output(generate_interval_id('interval'), 'interval'),
+    [Input(generate_interval_id('interval'), 'n_intervals')]
+)(generate_interval_callback())
 
 if __name__ == '__main__':
     app.run_server(debug=False)
