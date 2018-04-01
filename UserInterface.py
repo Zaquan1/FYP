@@ -12,8 +12,8 @@ import base64
 import os
 import numpy as np
 
-
 app = dash.Dash()
+stop = True
 music = {
     'name': None,
     'filepath': None,
@@ -29,7 +29,9 @@ music = {
 model = load_model("resource/model/LSTM.h5")
 model._make_predict_function()
 
-app.layout = html.Div([
+app.css.config.serve_locally = True
+app.scripts.config.serve_locally = True
+app.layout = html.Div(children=[
     html.H1('Music Emotion Recognition', style={'textAlign': 'center'}),
     html.Hr(),
     dcc.Upload(
