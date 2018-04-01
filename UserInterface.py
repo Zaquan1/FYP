@@ -1,18 +1,16 @@
 import dash
-import base64
-import os
-from Feature import Feature
-from pandas import DataFrame
-from pandas import concat
-from dash.dependencies import Input, Output, Event, State
+from dash.dependencies import Input, Output
 import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objs as go
 from plotly import tools
-import numpy as np
-import random
+
+from Feature import Feature
 from keras.models import load_model
-from keras import backend as K
+
+import base64
+import os
+import numpy as np
 
 
 app = dash.Dash()
@@ -20,20 +18,18 @@ music = {
     'name': None,
     'filepath': None,
     'duration': None,
-    'energy_feature': None,
-    'timbre_feature': None,
-    'rhythm_feature': None,
-    'melody_feature': None,
-    'arousal_predict': None,
-    'valance_predict': None,
+    'energy_feature': [],
+    'timbre_feature': [],
+    'rhythm_feature': [],
+    'melody_feature': [],
+    'arousal_predict': [],
+    'valance_predict': [],
     'binary': None
 }
 model = load_model("resource/model/LSTM.h5")
 model._make_predict_function()
 
-app.css.config.serve_locally = True
-app.scripts.config.serve_locally = True
-app.layout = html.Div(children=[
+app.layout = html.Div([
     html.H1('Music Emotion Recognition', style={'textAlign': 'center'}),
     html.Hr(),
     dcc.Upload(
@@ -54,29 +50,54 @@ app.layout = html.Div(children=[
         },
         multiple=False,
         accept='.mp3'
-
     ),
-
-    html.Div(id='output-data-upload'),
+    html.Div(
+        id='features-graph-container'
+    ),
 ])
 
 
-@app.callback(Output('output-data-upload', 'children'),
-              [Input('upload-audio', 'contents'),
-               Input('upload-audio', 'filename')])
-def update_output(contents, filename):
-    if filename is not None and str(filename).split('.')[1] == 'mp3':
+def generate_graph_id(value):
+    return '{}_graph'.format(value)
+
+
+DYNAMIC_GRAPH = {
+    'Valance-arousal': dcc.Graph(
+        id=generate_graph_id('Valance-arousal'),
+        figure={}
+    ),
+    'Features': dcc.Graph(
+        id=generate_graph_id('Features'),
+        figure={}
+    )
+}
+
+
+def generate_interval_id(value):
+    return '{}_interval'.format(value)
+
+
+@app.callback(
+    Output('features-graph-container', 'children'),
+    [Input('upload-audio', 'contents'),
+     Input('upload-audio', 'filename')])
+def display_controls(contents, filename):
+    # generate 2 dynamic controls based off of the datasource selections
+    if contents is not None:
         get_audio_contents(contents, filename)
         return html.Div([
-            html.H2(music.get('name').split('.')[0]),
-            html.Audio(id='music_audio', src=music.get('binary'), controls="audio", style={'width': '99%'}),
             html.Div([
-                dcc.Graph(id='arousal-valance-graph', figure=arousal_valance_graph())
+                DYNAMIC_GRAPH['Valance-arousal']
             ], style={'width': '50%', 'display': 'inline-block'}),
             html.Div([
-                dcc.Graph(id='rhythm-graph', figure=feature_graph())
-            ], style={'width': '50%', 'height': '99%', 'display': 'inline-block'})
-    ])
+                DYNAMIC_GRAPH['Features']
+            ], style={'width': '50%', 'display': 'inline-block'}),
+            dcc.Interval(
+                id=generate_interval_id('test'),
+                interval=1*500,
+                n_intervals=0
+            ),
+        ])
 
 
 def get_audio_contents(c, filename):
@@ -103,7 +124,7 @@ def get_audio_contents(c, filename):
             axis=0)[:-3]
         music['rhythm_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_rhythm_features()))[:-3]
         # data preparation for prediction
-        data = series_to_supervised(np.transpose(music_feature.get_all_features()), 3, 1)
+        data = Feature.series_to_supervised(np.transpose(music_feature.get_all_features()), 3, 1)
         data = data.values.reshape(data.values.shape[0], 4, 146)
         predict = model.predict(data)
         # save prediction into dictionary
@@ -121,69 +142,58 @@ def frange(start, stop, step):
         i += step
 
 
-def arousal_valance_graph():
-    trace = go.Scatter(
-        x=[i for i in music['valance_predict']],
-        y=[i for i in music['arousal_predict']],
-        mode='markers+text',
-        text=music['duration'],
-        textposition='bottom'
-    )
-    fig = tools.make_subplots(1, 1)
-    fig.append_trace(trace, 1, 1)
-    fig['layout'].update(title='Arousal Valance Graph')
-    fig['layout']['xaxis1'].update(title='Valance')
-    fig['layout']['yaxis1'].update(title='Arousal')
-    return fig
-
-
-def feature_graph():
-    trace_rhythm = go.Scatter(
-        x=music['duration'],
-        y=music['rhythm_feature'],
-    )
-    trace_timbre = go.Scatter(
-        x=music['duration'],
-        y=music['timbre_feature'],
-    )
-    trace_energy = go.Scatter(
-        x=music['duration'],
-        y=music['energy_feature'],
-    )
-    trace_melody = go.Scatter(
-        x=music['duration'],
-        y=music['melody_feature'],
-    )
-    fig = tools.make_subplots(4, 1, subplot_titles=('Timbre Feature', 'energy Feature',
-                                                    'melody Feature', 'rhythm Feature'))
-    fig.append_trace(trace_timbre, 1, 1)
-    fig.append_trace(trace_energy, 2, 1)
-    fig.append_trace(trace_melody, 3, 1)
-    fig.append_trace(trace_rhythm, 4, 1)
-    fig['layout']['xaxis4'].update(title='Duration')
-    return fig
-
-def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
-    n_vars = 1 if type(data) is list else data.shape[1]
-    df = DataFrame(data)
-    cols, names = list(), list()
-
-    for i in range(n_in, 0, -1):
-        cols.append(df.shift(i))
-        names += [('var%d(t-%d)' % (j+1, i)) for j in range(n_vars)]
-    for i in range(0, n_out):
-        cols.append(df.shift(-i))
-        if i == 0:
-            names += [('var%d(t)' % (j+1)) for j in range(n_vars)]
+def generate_output_callback(key):
+    def output_callback(n_interval):
+        # This function can display different outputs depending on
+        # the values of the dynamic controls
+        print('wrapper called')
+        if key == 'Features':
+            trace_rhythm = go.Scatter(
+                x=music['duration'][:n_interval],
+                y=music['rhythm_feature'][:n_interval]
+            )
+            trace_timbre = go.Scatter(
+                x=music['duration'][:n_interval],
+                y=music['timbre_feature'][:n_interval]
+            )
+            trace_energy = go.Scatter(
+                x=music['duration'][:n_interval],
+                y=music['energy_feature'][:n_interval]
+            )
+            trace_melody = go.Scatter(
+                x=music['duration'][:n_interval],
+                y=music['melody_feature'][:n_interval]
+            )
+            fig = tools.make_subplots(4, 1, subplot_titles=('Timbre Feature', 'energy Feature',
+                                                            'melody Feature', 'rhythm Feature'))
+            fig.append_trace(trace_timbre, 1, 1)
+            fig.append_trace(trace_energy, 2, 1)
+            fig.append_trace(trace_melody, 3, 1)
+            fig.append_trace(trace_rhythm, 4, 1)
+            fig['layout']['xaxis4'].update(title='Duration')
         else:
-            names += [('var%d(t+%d)' % (j+1, i)) for j in range(n_vars)]
-        agg = concat(cols, axis=1)
-        agg.columns = names
-        if dropnan:
-            agg.dropna(inplace=True)
-        return agg
+            trace = go.Scatter(
+                x=music['valance_predict'][n_interval-3:n_interval],
+                y=music['arousal_predict'][n_interval-3:n_interval],
+            )
+            fig = tools.make_subplots(1, 1)
+            fig.append_trace(trace, 1, 1)
+            fig['layout'].update(title='Arousal Valance Graph')
+            fig['layout']['xaxis1'].update(title='Valance')
+            fig['layout']['yaxis1'].update(title='Arousal')
 
+        return fig
+    return output_callback
 
+app.config.supress_callback_exceptions = True
+
+for key in DYNAMIC_GRAPH:
+    print('all callback created: ', key)
+    app.callback(
+        Output(generate_graph_id(key), 'figure'),
+        [Input(generate_interval_id('test'), 'n_intervals')])(
+        generate_output_callback(key)
+    )
 
 if __name__ == '__main__':
     app.run_server(debug=False)
