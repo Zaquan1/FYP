@@ -1,5 +1,5 @@
 import dash
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objs as go
@@ -29,8 +29,10 @@ music = {
 }
 model_arousal = load_model("resource/model/LSTMArousal.h5")
 model_valance = load_model("resource/model/LSTMValance.h5")
-app.css.config.serve_locally = True
+
+#app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True
+
 app.layout = html.Div(children=[
     html.H1('Music Emotion Recognition', style={'textAlign': 'center'}),
     html.Hr(),
@@ -55,7 +57,7 @@ app.layout = html.Div(children=[
     ),
     html.Div(
         id='features-graph-container'
-    ),
+    )
 ])
 
 
@@ -81,19 +83,26 @@ def generate_interval_id(value):
 
 @app.callback(
     Output('features-graph-container', 'children'),
-    [Input('upload-audio', 'contents'),
-     Input('upload-audio', 'filename')])
+    [Input('upload-audio', 'contents')],
+    [State('upload-audio', 'filename')])
 def display_controls(contents, filename):
     print("hi there")
     if contents is not None:
         get_audio_contents(contents, filename)
         return html.Div([
+            html.H3(filename, style={'textAlign': 'center'}),
+            html.Div([
+               html.Button('Stop', id='stp-button', n_clicks=0)
+            ], style={'textAlign': 'center'}),
+            html.Div(id='clicked-button', children='rep:0 stp:0 last:nan', style={'display': 'none'}),
+
             html.Div([
                 DYNAMIC_GRAPH['Valance-arousal']
             ], style={'width': '50%', 'display': 'inline-block'}),
             html.Div([
                 DYNAMIC_GRAPH['Features']
             ], style={'width': '50%', 'display': 'inline-block'}),
+
             html.Audio(src=contents, id='music-audio', autoPlay='audio'),
             dcc.Interval(
                 id=generate_interval_id('interval'),
@@ -146,19 +155,23 @@ def generate_output_callback(key):
         if key == 'Features':
             trace_rhythm = go.Scatter(
                 x=music['duration'][:n_interval],
-                y=music['rhythm_feature'][:n_interval]
+                y=music['rhythm_feature'][:n_interval],
+                name='Rhythm Feature'
             )
             trace_timbre = go.Scatter(
                 x=music['duration'][:n_interval],
-                y=music['timbre_feature'][:n_interval]
+                y=music['timbre_feature'][:n_interval],
+                name='Timbre Feature'
             )
             trace_energy = go.Scatter(
                 x=music['duration'][:n_interval],
-                y=music['energy_feature'][:n_interval]
+                y=music['energy_feature'][:n_interval],
+                name='Energy Feature'
             )
             trace_melody = go.Scatter(
                 x=music['duration'][:n_interval],
-                y=music['melody_feature'][:n_interval]
+                y=music['melody_feature'][:n_interval],
+                name='Melody Feature'
             )
             fig = tools.make_subplots(4, 1, subplot_titles=('Timbre Feature', 'energy Feature',
                                                             'melody Feature', 'rhythm Feature'))
@@ -169,29 +182,71 @@ def generate_output_callback(key):
             fig['layout']['xaxis4'].update(title='Duration')
         else:
             trace = go.Scatter(
-                x=music['valance_predict'][misc.negative_to_zero(n_interval-4):misc.negative_to_zero(n_interval-3)],
-                y=music['arousal_predict'][misc.negative_to_zero(n_interval-4):misc.negative_to_zero(n_interval-3)],
+                x=music['valance_predict'][:misc.negative_to_zero(n_interval-3)],
+                y=music['arousal_predict'][:misc.negative_to_zero(n_interval-3)],
+                name='prediction-traces',
+                mode='markers'
+            )
+            trace_curr = go.Scatter(
+                x=music['valance_predict'][misc.negative_to_zero(n_interval-4):misc.negative_to_zero(n_interval - 3)],
+                y=music['arousal_predict'][misc.negative_to_zero(n_interval-4):misc.negative_to_zero(n_interval - 3)],
+                name='curr-prediction',
                 mode='markers+text',
-                text=music['duration'][n_interval-1:n_interval],
+                text=[str(music['duration'][n_interval]) + ' sec.'],
+                textposition='bottom',
+                textfont=dict(
+                    size=15,
+                    color='#ff7f0e'
+                )
+
+            )
+            trace_emotion = go.Scatter(
+                x=[0,
+                   0.367, 0.687, 0.842, 0.964,
+                   1,
+                   0.964, 0.842, 0.687, 0.367,
+                   0,
+                   -0.367, -0.687, -0.842, -0.964,
+                   -1,
+                   -0.964, -0.842, -0.687, -0.367],
+                y=[1,
+                   0.929, 0.7267, 0.5395, 0.2677,
+                   0,
+                   -0.2677, -0.5395, -0.7267, -0.929,
+                   -1,
+                   -0.929, -0.7267, -0.5395, -0.2677,
+                   0,
+                   0.2677, 0.5395, 0.7267, 0.929],
+                name='emotion',
+                mode='markers+text',
+                text=['Activation',
+                      'Alert', 'Excited', 'Elated', 'Happy',
+                      'Pleasant',
+                      'Contented', 'Serene', 'Relaxed', 'Calm',
+                      'Deactivation',
+                      'Tired', 'Bored', 'Depressed', 'Sad',
+                      'Unpleasant',
+                      'Upset', 'Stressed', 'Nervous', 'Tense'],
                 textposition='bottom'
             )
-            fig = tools.make_subplots(1, 1)
-            fig.append_trace(trace, 1, 1)
+            data = [trace, trace_curr, trace_emotion]
+            fig = go.Figure(data=data)
             fig['layout'].update(title='Arousal Valance Graph')
-            fig['layout']['xaxis1'].update(title='Valance', range=[-1, 1])
-            fig['layout']['yaxis1'].update(title='Arousal', range=[-1, 1])
+            fig['layout']['xaxis1'].update(title='Valance', range=[-1.2, 1.2])
+            fig['layout']['yaxis1'].update(title='Arousal', range=[-1.2, 1.2])
 
         return fig
     return output_callback
 
 
 def generate_interval_callback():
-    def interval_callback(n_interval):
-        if n_interval >= len(music['duration']):
+    def interval_callback(n_interval, clicks):
+        if n_interval >= len(music['duration']) or clicks > 0:
             return 60*60*1000
         else:
             return 1*500
     return interval_callback
+
 
 app.config.supress_callback_exceptions = True
 
@@ -204,8 +259,22 @@ for key in DYNAMIC_GRAPH:
     )
 app.callback(
     Output(generate_interval_id('interval'), 'interval'),
-    [Input(generate_interval_id('interval'), 'n_intervals')]
+    [Input(generate_interval_id('interval'), 'n_intervals'),
+     Input('stp-button', 'n_clicks')]
 )(generate_interval_callback())
+
+
+@app.callback(Output('music-audio', 'src'),
+              [Input('stp-button', 'n_clicks')])
+def stop_play_audio(clicks):
+    if clicks > 0:
+        return ''
+
+
+
+app.css.append_css({
+    'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'
+})
 
 if __name__ == '__main__':
     app.run_server(debug=False)

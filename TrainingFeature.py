@@ -4,6 +4,7 @@ import itertools
 import numpy as np
 import csv
 import time
+from sklearn.preprocessing import MinMaxScaler
 from pandas import read_csv
 
 
@@ -62,6 +63,7 @@ features_header.append(get_feature_name("valence"))
 features_header = list(itertools.chain.from_iterable(features_header))
 i = 0
 for music in musicDir:
+    
     start = time.time()
     # extract all features
     features = Feature(music, 15)
@@ -101,3 +103,4 @@ for music in musicDir:
     i += 1
     print(features.filename, " done, total left: ", i, "/", len(musicDir))
     print("Runtime: ", end-start, " seconds")
+
