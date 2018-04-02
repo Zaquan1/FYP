@@ -27,9 +27,8 @@ music = {
     'valance_predict': [],
     'binary': None
 }
-model = load_model("resource/model/LSTM.h5")
-model._make_predict_function()
-
+model_arousal = load_model("resource/model/LSTMArousal.h5")
+model_valance = load_model("resource/model/LSTMValance.h5")
 app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True
 app.layout = html.Div(children=[
@@ -130,10 +129,11 @@ def get_audio_contents(c, filename):
         # data preparation for prediction
         data = misc.series_to_supervised(np.transpose(music_feature.get_all_features()), 3, 1)
         data = data.values.reshape(data.values.shape[0], 4, 146)
-        predict = model.predict(data)
+        predict_arousal = model_arousal.predict(data)
+        predict_valance = model_valance.predict(data)
         # save prediction into dictionary
-        music['arousal_predict'] = predict[:, 0]
-        music['valance_predict'] = predict[:, 1]
+        music['arousal_predict'] = predict_arousal[:, 0]
+        music['valance_predict'] = predict_valance[:, 0]
         music['duration'] = [i for i in misc.frange(0.5, len(music['timbre_feature']) * 0.5, 0.5)]
         '''['%d:%2.1f' % (int((i + 1.5) / 60), (i + 1.5) % 60) for i in
                              frange(0.5, len(predict) * 0.5, 0.5)]'''
