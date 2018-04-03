@@ -196,7 +196,6 @@ def generate_output_callback(key):
                 textposition='bottom',
                 textfont=dict(
                     size=15,
-                    color='#ff7f0e'
                 )
 
             )
