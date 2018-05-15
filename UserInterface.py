@@ -24,7 +24,7 @@ except OSError as e:
 
 app = dash.Dash()
 stop = True
-music = {
+empty_dict_music = {
     'name': None,
     'filepath': None,
     'duration': None,
@@ -36,7 +36,7 @@ music = {
     'valance_predict': [],
     'binary': None
 }
-music_list=[]
+music_list = []
 
 # prepare the model
 model_arousal = load_model("resource/model/LSTMArousal.h5")
@@ -47,6 +47,7 @@ app.scripts.config.serve_locally = True
 app.layout = html.Div(children=[
     html.H1('Music Emotion Recognition', style={'textAlign': 'center'}),
     html.Hr(),
+    # drag and drop
     dcc.Upload(
         id='upload-audio',
         children=html.Div([
@@ -66,16 +67,26 @@ app.layout = html.Div(children=[
         multiple=False,
         accept='.mp3'
     ),
+    html.Div([
+        "Pick existing song:",
+        dcc.Dropdown(
+            id='musicList',
+            options=[],
+            searchable=False,
+            clearable=False
+        )
+    ]),
     html.Div(
         id='features-graph-container'
     )
 ])
 
-
+# create new graph id
 def generate_graph_id(value):
     return '{}_graph'.format(value)
 
 
+# initialise dynamic graph
 DYNAMIC_GRAPH = {
     'Valance-arousal': dcc.Graph(
         id=generate_graph_id('Valance-arousal'),
@@ -87,29 +98,37 @@ DYNAMIC_GRAPH = {
     )
 }
 
-
+# generate new interval id
 def generate_interval_id(value):
     return '{}_interval'.format(value)
 
-
-app.config.supress_callback_exceptions = True
-
-
+# listen to any upload or changes in the dropdown menu
 @app.callback(
     Output('features-graph-container', 'children'),
-    [Input('upload-audio', 'contents')],
+    [Input('upload-audio', 'contents'),
+     Input('musicList', 'value')],
     [State('upload-audio', 'filename')])
-def display_controls(contents, filename):
+def display_controls(contents, curr_music, filename):
     if contents is not None:
         filename_temp = str(filename).split('.')
-        print(filename_temp)
+        # check file type
         if filename_temp[-1] != 'mp3':
             return html.Div([
                 html.H3('Error: file is not in mp3 format', style={'textAlign': 'center'})
             ])
+        # if dropdown menu is empty, create new music
+        if curr_music is not None:
+            music = searchMusic(curr_music, music_list)
+            if music:
+                filename = music[0]['name']
+                contents = music[0]['binary']
+            else:
+                get_audio_contents(contents, filename)
+        else:
+            get_audio_contents(contents, filename)
 
-        get_audio_contents(contents, filename)
         return html.Div([
+
             html.H3(filename, style={'textAlign': 'center'}),
             html.Div([
                html.Button('Stop', id='stp-button', n_clicks=0)
@@ -131,11 +150,30 @@ def display_controls(contents, filename):
             ),
         ])
 
+# update dropdown menu option
+@app.callback(
+    Output('musicList', 'options'),
+    [Input('upload-audio', 'filename')])
+def update_option_menu(filename):
+    music = searchMusic(filename, music_list)
+    if not music:
+        return [{'label': filename, 'value': filename}] + \
+               [{'label': music['name'], 'value': music['name']} for music in music_list]
+
+# update dropdown menu value
+@app.callback(
+    Output('musicList', 'value'),
+    [Input('upload-audio', 'filename')])
+def update_value_menu(filename):
+    return filename
+
+
 # extract the features from audio file and make prediction
 def get_audio_contents(c, filename):
     if c is not None:
         ctype, cstring = str(c).split(',')
         decoded = base64.b64decode(cstring)
+        music = empty_dict_music.copy()
         music['filepath'] = os.path.dirname(os.path.realpath(__file__)) + "/resource/temp/" + filename
         try:
             file = open(music.get('filepath'), 'wb')
@@ -148,8 +186,7 @@ def get_audio_contents(c, filename):
         music['binary'] = c
         music_feature = Feature(music['filepath'])
         # get all extracted feature
-        music['energy_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_energy_features())).mean(
-            axis=0)
+        music['energy_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_energy_features()))[1, :]
         music['timbre_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_timbre_features())).mean(
             axis=0)
         music['melody_feature'] = (Feature.sync_frames(music_feature, music_feature.extract_melody_features())).mean(
@@ -166,29 +203,36 @@ def get_audio_contents(c, filename):
         music['duration'] = [i for i in misc.frange(0.5, len(music['timbre_feature']) * 0.5, 0.5)]
         '''['%d:%2.1f' % (int((i + 1.5) / 60), (i + 1.5) % 60) for i in
                              frange(0.5, len(predict) * 0.5, 0.5)]'''
+        music_list.insert(0, music)
 
 
 # create graph
 def generate_output_callback(key):
-    def output_callback(n_interval):
+    def output_callback(n_interval, curr_music):
+
+        music = searchMusic(curr_music, music_list)[0]
         # This function can display different outputs depending on
         # the values of the dynamic controls
         if key == 'Features':
+            # create/update rhythm feature graph
             trace_rhythm = go.Scatter(
                 x=music['duration'][:n_interval],
                 y=music['rhythm_feature'][:n_interval],
                 name='Rhythm Feature'
             )
+            # create/update timbre feature graph
             trace_timbre = go.Scatter(
                 x=music['duration'][:n_interval],
                 y=music['timbre_feature'][:n_interval],
                 name='Timbre Feature'
             )
+            # create/update energy feature graph
             trace_energy = go.Scatter(
                 x=music['duration'][:n_interval],
                 y=music['energy_feature'][:n_interval],
                 name='Energy Feature'
             )
+            # create/update melody feature graph
             trace_melody = go.Scatter(
                 x=music['duration'][:n_interval],
                 y=music['melody_feature'][:n_interval],
@@ -202,6 +246,7 @@ def generate_output_callback(key):
             fig.append_trace(trace_rhythm, 4, 1)
             fig['layout']['xaxis4'].update(title='Duration')
         else:
+            # create valance arousal graph
             trace = go.Scatter(
                 x=music['valance_predict'][:misc.negative_to_zero(n_interval-3)],
                 y=music['arousal_predict'][:misc.negative_to_zero(n_interval-3)],
@@ -218,8 +263,8 @@ def generate_output_callback(key):
                 textfont=dict(
                     size=15,
                 )
-
             )
+            # plotting the emotion label on the graph
             trace_emotion = go.Scatter(
                 x=[0,
                    0.367, 0.687, 0.842, 0.964,
@@ -258,34 +303,46 @@ def generate_output_callback(key):
         return fig
     return output_callback
 
-
+# handle the interval for updating the graph
 def generate_interval_callback():
-    def interval_callback(n_interval, clicks):
+    def interval_callback(n_interval, clicks, curr_music):
+        music = searchMusic(curr_music, music_list)[0]
         if n_interval >= len(music['duration']) or clicks > 0:
             return 60*60*1000
         else:
             return 1*500
     return interval_callback
 
+
+app.config.supress_callback_exceptions = True
+
+# interval listener to update graph for every 0.5 second
 for key in DYNAMIC_GRAPH:
     print('all callback created: ', key)
     app.callback(
         Output(generate_graph_id(key), 'figure'),
-        [Input(generate_interval_id('interval'), 'n_intervals')])(
+        [Input(generate_interval_id('interval'), 'n_intervals')],
+        [State('musicList', 'value')]
+    )(
         generate_output_callback(key)
     )
 app.callback(
     Output(generate_interval_id('interval'), 'interval'),
     [Input(generate_interval_id('interval'), 'n_intervals'),
-     Input('stp-button', 'n_clicks')]
+     Input('stp-button', 'n_clicks')],
+    [State('musicList', 'value')]
 )(generate_interval_callback())
 
-
+# stop audio
 @app.callback(Output('music-audio', 'src'),
               [Input('stp-button', 'n_clicks')])
 def stop_play_audio(clicks):
     if clicks > 0:
         return ''
+
+# search for existing music in the list
+def searchMusic(name, musics):
+    return [music for music in musics if music['name'] == name]
 
 
 
