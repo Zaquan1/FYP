@@ -9,9 +9,18 @@ from Feature import Feature
 from keras.models import load_model
 
 import base64
-import os
+import os, errno
 import numpy as np
 import miscellaneous as misc
+
+
+# create dir for temporarily store the music
+try:
+    os.mkdir('resource')
+    os.mkdir('resource/temp')
+except OSError as e:
+    if e.errno != errno.EEXIST:
+        raise
 
 app = dash.Dash()
 stop = True
@@ -27,12 +36,14 @@ music = {
     'valance_predict': [],
     'binary': None
 }
+music_list=[]
+
+# prepare the model
 model_arousal = load_model("resource/model/LSTMArousal.h5")
 model_valance = load_model("resource/model/LSTMValance.h5")
 
-#app.css.config.serve_locally = True
 app.scripts.config.serve_locally = True
-
+# creating the main app layout
 app.layout = html.Div(children=[
     html.H1('Music Emotion Recognition', style={'textAlign': 'center'}),
     html.Hr(),
@@ -40,7 +51,7 @@ app.layout = html.Div(children=[
         id='upload-audio',
         children=html.Div([
             'Drag and Drop or ',
-            html.A('Select Files'),
+            html.A('Select a File'),
         ]),
         style={
             'width': '98%',
@@ -81,13 +92,22 @@ def generate_interval_id(value):
     return '{}_interval'.format(value)
 
 
+app.config.supress_callback_exceptions = True
+
+
 @app.callback(
     Output('features-graph-container', 'children'),
     [Input('upload-audio', 'contents')],
     [State('upload-audio', 'filename')])
 def display_controls(contents, filename):
-    print("hi there")
     if contents is not None:
+        filename_temp = str(filename).split('.')
+        print(filename_temp)
+        if filename_temp[-1] != 'mp3':
+            return html.Div([
+                html.H3('Error: file is not in mp3 format', style={'textAlign': 'center'})
+            ])
+
         get_audio_contents(contents, filename)
         return html.Div([
             html.H3(filename, style={'textAlign': 'center'}),
@@ -111,7 +131,7 @@ def display_controls(contents, filename):
             ),
         ])
 
-
+# extract the features from audio file and make prediction
 def get_audio_contents(c, filename):
     if c is not None:
         ctype, cstring = str(c).split(',')
@@ -148,6 +168,7 @@ def get_audio_contents(c, filename):
                              frange(0.5, len(predict) * 0.5, 0.5)]'''
 
 
+# create graph
 def generate_output_callback(key):
     def output_callback(n_interval):
         # This function can display different outputs depending on
@@ -245,9 +266,6 @@ def generate_interval_callback():
         else:
             return 1*500
     return interval_callback
-
-
-app.config.supress_callback_exceptions = True
 
 for key in DYNAMIC_GRAPH:
     print('all callback created: ', key)

@@ -1,13 +1,9 @@
 from matplotlib import pyplot
-import os
+import os, errno
 from pandas import read_csv
-from pandas import DataFrame
-from pandas import concat
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.layers import LSTM
-from keras.models import load_model
-import time
 from math import sqrt
 from sklearn.metrics import mean_squared_error
 import numpy as np
@@ -47,7 +43,7 @@ def get_extracted_features():
     features_data = []
     dirpath = os.path.dirname(os.path.realpath(__file__)) + "/resource/features"
     print("getting feature....")
-    for filename in os.listdir(dirpath):
+    for filename in os.listdir(dirpath)[:20]:
         dataset = read_csv("resource/features/" + filename, header=0)
         values = dataset.values
         data = misc.series_to_supervised(values, timesteps, 1)
@@ -59,6 +55,14 @@ def get_extracted_features():
         i += 1
     return features_data
 
+
+# create dir for storing model
+try:
+    os.mkdir('resource')
+    os.mkdir('resource/model')
+except OSError as e:
+    if e.errno != errno.EEXIST:
+        raise
 
 timesteps = 3
 # number of total features including 2 of the labels, arousal and valance

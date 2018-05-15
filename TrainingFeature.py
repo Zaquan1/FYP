@@ -1,19 +1,20 @@
-import pickle
 from Feature import Feature
 import itertools
 import numpy as np
 import csv
 import time
-from sklearn.preprocessing import MinMaxScaler
+import matplotlib.pyplot as plt
+import os, errno
 from pandas import read_csv
 
-
-def get_directory():
-    with open('music.pkl', 'rb') as f:
-        music_dir = pickle.load(f)
+# get audio files for feature extraction
+def get_audio_directory():
+    cd = os.path.dirname(os.path.realpath(__file__))
+    resource_dir = cd + '/resource/music/'
+    music_dir = [resource_dir + f for f in os.listdir(resource_dir)]
     return music_dir
 
-
+# get the annotation
 def get_labels():
     arousal = read_csv("resource/music_label/arousal.csv", header=0)
     valence = read_csv("resource/music_label/valence.csv", header=0)
@@ -31,8 +32,17 @@ def get_feature_name(name, total_round=1):
             i += 1
     return new_name
 
+
+# create dir for storing features
+try:
+    os.mkdir('resource')
+    os.mkdir('resource/features')
+except OSError as e:
+    if e.errno != errno.EEXIST:
+        raise
+
 # get directory for all the music
-musicDir = get_directory()
+musicDir = get_audio_directory()
 # get labels for the music
 arousal, valence = get_labels()
 # get all features' header
@@ -72,6 +82,7 @@ for music in musicDir:
     features.extract_timbre_features()
     print("extracting melody...")
     features.extract_melody_features()
+    plt.show()
     print("extracting energy...")
     features.extract_energy_features()
     print("extracting rhythm...")
@@ -93,6 +104,7 @@ for music in musicDir:
     curr_valence_label = curr_valence_label[:min_music_length]
     # append label to the data
     all_features = np.vstack([all_features, curr_arousal_label, curr_valence_label])
+
     # save feature to csv
     with open("resource/features/" + features.filename + ".csv", "w+", newline='') as my_csv:
         csvWriter = csv.writer(my_csv, delimiter=',')
@@ -104,3 +116,4 @@ for music in musicDir:
     print(features.filename, " done, total left: ", i, "/", len(musicDir))
     print("Runtime: ", end-start, " seconds")
 
+    print('done')
